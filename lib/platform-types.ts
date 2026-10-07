@@ -3,7 +3,7 @@ export type Floor = { id: string; restaurant_id: string; name: string; width: nu
 export type Table = { id: string; floor_id: string; code: string; seats: number; shape: "round" | "square" | "long"; x: number; y: number; width: number; height: number; rotation: number; merge_group: string | null; online_bookable: boolean };
 export type MapElement = { id: string; floor_id: string; kind: "wall" | "entry" | "exit" | "washroom"; x: number; y: number; width: number; height: number; rotation: number };
 export type MenuItem = { id: string; restaurant_id: string; category_id: string | null; category: string; name: string; description: string | null; image_url: string | null; is_veg: boolean; price: number; half_price: number | null; full_price: number | null; available: boolean };
-export type Booking = { id: string; restaurant_id: string; customer_id: string; guest_count: number; starts_at: string; ends_at: string; status: string; payment_status: string; deposit_paise: number; special_request: string | null; source: string; created_at: string };
+export type Booking = { id: string; restaurant_id: string; customer_id: string; customer_name: string | null; customer_phone: string | null; guest_count: number; starts_at: string; ends_at: string; status: string; payment_status: string; deposit_paise: number; special_request: string | null; source: string; created_at: string };
 export type Order = { id: string; restaurant_id: string; booking_id: string | null; table_id: string | null; status: string; source: string; notes: string | null; created_at: string };
 export type Membership = { restaurant_id: string; role: "owner" | "manager" | "waiter" };
 export const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;

@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import {
   Building2,
   ChartNoAxesCombined,
@@ -17,9 +18,11 @@ import {
   LayoutGrid,
   Settings2,
   UtensilsCrossed,
+  Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { OrderBillPanel } from "@/components/order-bill-panel";
 import { GoogleMark } from "@/components/google-mark";
@@ -84,6 +87,14 @@ type DragTarget = {
   startY: number;
   originX: number;
   originY: number;
+};
+type ActionDialogRequest = {
+  title: string;
+  description?: string;
+  submitLabel: string;
+  destructive?: boolean;
+  fields?: { name: string; label: string; type?: string; initial?: string; required?: boolean }[];
+  resolve: (values: Record<string, string> | null) => void;
 };
 const days = [
   "Sunday",
@@ -154,8 +165,24 @@ export function ManagementWebsite() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useEffect(() => { if (notice) toast.success(notice); }, [notice]);
+  useEffect(() => { if (error) toast.error(error); }, [error]);
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [dragTarget, setDragTarget] = useState<DragTarget | null>(null);
+  const [actionDialog, setActionDialog] = useState<ActionDialogRequest | null>(null);
+  const [dialogValues, setDialogValues] = useState<Record<string, string>>({});
+
+  function ask(request: Omit<ActionDialogRequest, "resolve">) {
+    return new Promise<Record<string, string> | null>((resolve) => {
+      setDialogValues(Object.fromEntries((request.fields ?? []).map((field) => [field.name, field.initial ?? ""])));
+      setActionDialog({ ...request, resolve });
+    });
+  }
+
+  function closeActionDialog(values: Record<string, string> | null = null) {
+    actionDialog?.resolve(values);
+    setActionDialog(null);
+  }
 
   useEffect(() => {
     if (!client) {
@@ -511,8 +538,13 @@ export function ManagementWebsite() {
 
   async function addTable() {
     if (!client || !floors[0]) return;
-    const code = window.prompt("Table ID (for example T12)")?.trim();
-    const seats = Number(window.prompt("Number of seats", "4"));
+    const values = await ask({ title: "Add a table", submitLabel: "Add table", fields: [
+      { name: "code", label: "Table ID", initial: "T12", required: true },
+      { name: "seats", label: "Number of seats", type: "number", initial: "4", required: true },
+    ] });
+    if (!values) return;
+    const code = values.code.trim();
+    const seats = Number(values.seats);
     if (!code || !Number.isInteger(seats) || seats < 1 || seats > 30) return;
     await action(
       () =>
@@ -637,8 +669,13 @@ export function ManagementWebsite() {
 
   async function blockSelectedTable() {
     if (!client || !chosenTable || !user) return;
-    const start = window.prompt("Block from (YYYY-MM-DDTHH:mm)");
-    const end = window.prompt("Block until (YYYY-MM-DDTHH:mm)");
+    const values = await ask({ title: `Block ${chosenTable.code}`, description: "Choose when this table should be unavailable online.", submitLabel: "Block table", fields: [
+      { name: "start", label: "From", type: "datetime-local", required: true },
+      { name: "end", label: "Until", type: "datetime-local", required: true },
+      { name: "reason", label: "Reason (optional)" },
+    ] });
+    if (!values) return;
+    const { start, end } = values;
     if (
       !start ||
       !end ||
@@ -649,7 +686,7 @@ export function ManagementWebsite() {
       setError("Enter a valid start and end time.");
       return;
     }
-    const reason = window.prompt("Reason (optional)") ?? "";
+    const reason = values.reason ?? "";
     await action(
       () =>
         client.from("blocked_tables").insert({
@@ -894,10 +931,10 @@ export function ManagementWebsite() {
       setError("Unpublish this restaurant before deleting it.");
       return;
     }
-    const typedName = window.prompt(
-      `Permanently delete ${target.name} and its related setup data? Type the restaurant name to confirm.`,
-    );
-    if (typedName !== target.name) return;
+    const values = await ask({ title: `Delete ${target.name}?`, description: "This permanently deletes the restaurant and its setup data. Type its exact name to confirm.", submitLabel: "Delete restaurant", destructive: true, fields: [
+      { name: "name", label: "Restaurant name", required: true },
+    ] });
+    if (!values || values.name !== target.name) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -1044,6 +1081,28 @@ export function ManagementWebsite() {
     </section>
   );
 
+  const actionDialogUi = (
+    <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => { if (!open) closeActionDialog(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{actionDialog?.title}</DialogTitle>
+          <DialogDescription>{actionDialog?.description ?? "Review the details and continue when ready."}</DialogDescription>
+        </DialogHeader>
+        <form className="qb-dialog-form" onSubmit={(event) => { event.preventDefault(); closeActionDialog(dialogValues); }}>
+          {actionDialog?.fields?.map((field) => <label key={field.name}>
+            {field.label}
+            <Input type={field.type ?? "text"} required={field.required} value={dialogValues[field.name] ?? ""}
+              onChange={(event) => setDialogValues((current) => ({ ...current, [field.name]: event.target.value }))} />
+          </label>)}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => closeActionDialog()}>Cancel</Button>
+            <Button type="submit" variant={actionDialog?.destructive ? "destructive" : "default"}>{actionDialog?.submitLabel}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!client)
     return (
       <div className="qb-manage-auth">
@@ -1064,8 +1123,6 @@ export function ManagementWebsite() {
           <p className="qb-kicker">RESTAURANT MANAGEMENT</p>
           <h1>Sign in to manage your restaurant</h1>
           <p>Everything your team needs to run a great service, all in one place.</p>
-          {error && <p className="qb-error">{error}</p>}
-          {notice && <p className="qb-notice">{notice}</p>}
           <Button
             className="qb-google-button"
             variant="outline"
@@ -1138,17 +1195,8 @@ export function ManagementWebsite() {
           <p>
             Your superadmin account is ready. Start by adding a real restaurant.
           </p>
-          {error && (
-            <p className="qb-error" role="alert">
-              {error}
-            </p>
-          )}
-          {notice && (
-            <p className="qb-notice" role="status">
-              {notice}
-            </p>
-          )}
           {restaurantAdmin}
+          {actionDialogUi}
         </main>
       </div>
     );
@@ -1164,7 +1212,6 @@ export function ManagementWebsite() {
             Your account has not been assigned to a restaurant. Ask an owner to
             invite you.
           </p>
-          {error && <p className="qb-error">{error}</p>}
           <Button variant="outline" onClick={() => void client.auth.signOut()}>
             Sign out
           </Button>
@@ -1288,16 +1335,6 @@ export function ManagementWebsite() {
           </div>
           <span className="qb-role-pill">{role}</span>
         </div>
-        {error && (
-          <p className="qb-error" role="alert">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className="qb-notice" role="status">
-            {notice}
-          </p>
-        )}
         {view === "restaurants" && restaurantAdmin}
         {(view === "menu" || view === "settings") && (
           <div className="qb-upload">
@@ -1426,8 +1463,8 @@ export function ManagementWebsite() {
                 )}
                 <Button
                   variant="destructive"
-                  onClick={() => {
-                    if (window.confirm("Delete this map element?")) {
+                  onClick={async () => {
+                    if (await ask({ title: "Delete map element?", submitLabel: "Delete element", destructive: true })) {
                       void action(
                         () =>
                           client
@@ -1462,8 +1499,8 @@ export function ManagementWebsite() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => {
-                      if (window.confirm("Remove this staff member?"))
+                    onClick={async () => {
+                      if (await ask({ title: "Remove staff access?", description: "This person will no longer be able to manage the restaurant.", submitLabel: "Remove access", destructive: true }))
                         void action(
                           () =>
                             client
@@ -1490,10 +1527,11 @@ export function ManagementWebsite() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    const name = window
-                      .prompt("Category name", item.name)
-                      ?.trim();
+                  onClick={async () => {
+                    const values = await ask({ title: "Rename category", submitLabel: "Save name", fields: [
+                      { name: "name", label: "Category name", initial: item.name, required: true },
+                    ] });
+                    const name = values?.name.trim();
                     if (name && name !== item.name)
                       void action(
                         () =>
@@ -1510,12 +1548,8 @@ export function ManagementWebsite() {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete ${item.name}? Dishes will remain on the menu.`,
-                      )
-                    )
+                  onClick={async () => {
+                    if (await ask({ title: `Delete ${item.name}?`, description: "Dishes will remain on the menu.", submitLabel: "Delete category", destructive: true }))
                       void action(
                         () =>
                           client
@@ -1597,8 +1631,11 @@ export function ManagementWebsite() {
           <section className="qb-panel">
             <h2>Create a floor</h2>
             <Button
-              onClick={() => {
-                const name = window.prompt("Floor name", "Main floor")?.trim();
+              onClick={async () => {
+                const values = await ask({ title: "Create a floor", submitLabel: "Add floor", fields: [
+                  { name: "name", label: "Floor name", initial: "Main floor", required: true },
+                ] });
+                const name = values?.name.trim();
                 if (name)
                   void action(
                     () =>
@@ -2077,8 +2114,8 @@ export function ManagementWebsite() {
                     </label>
                     <Button
                       variant="destructive"
-                      onClick={() => {
-                        if (window.confirm(`Delete ${chosenTable.code}?`))
+                      onClick={async () => {
+                        if (await ask({ title: `Delete ${chosenTable.code}?`, submitLabel: "Delete table", destructive: true }))
                           void action(
                             () =>
                               client
@@ -2281,8 +2318,8 @@ export function ManagementWebsite() {
                   {editingMenu && (
                     <Button
                       variant="destructive"
-                      onClick={() => {
-                        if (window.confirm("Delete this dish?"))
+                      onClick={async () => {
+                        if (await ask({ title: "Delete this dish?", submitLabel: "Delete dish", destructive: true }))
                           void action(
                             () =>
                               client
@@ -2331,12 +2368,18 @@ export function ManagementWebsite() {
             <h2>Reservations</h2>
             {bookings.length ? (
               bookings.map((booking) => (
-                <div className="qb-list-row" key={booking.id}>
-                  <strong>{prettyDate(booking.starts_at)}</strong>
-                  <span>{booking.guest_count} guests</span>
-                  <span>
-                    {booking.status} · {booking.payment_status}
-                  </span>
+                <div className="qb-reservation-row" key={booking.id}>
+                  <div className="qb-reservation-main">
+                    <strong>{booking.customer_name || "Customer name unavailable"}</strong>
+                    <span>{prettyDate(booking.starts_at)} · {booking.guest_count} guests</span>
+                    <span>{booking.status} · {booking.payment_status}</span>
+                  </div>
+                  <div className="qb-reservation-contact">
+                    {booking.customer_phone ? <>
+                      <span>{booking.customer_phone}</span>
+                      <a className="qb-call-link" href={`tel:${booking.customer_phone}`}><Phone size={15} /> Call customer</a>
+                    </> : <span>Phone number unavailable</span>}
+                  </div>
                   <select
                     className="qb-select"
                     value={booking.status}
@@ -2564,6 +2607,7 @@ export function ManagementWebsite() {
           </div>
         )}
       </main>
+      {actionDialogUi}
     </div>
   );
 }

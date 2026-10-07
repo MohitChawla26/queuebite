@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import {
   CalendarDays,
   Clock3,
@@ -14,8 +15,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { GoogleMark } from "@/components/google-mark";
+import { dateInZone, timeLabel, zonedDateTimeToIso } from "@/lib/booking-time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import {
   prettyDate,
@@ -91,8 +94,14 @@ export function CustomerWebsite() {
   const [time, setTime] = useState("");
   const [guests, setGuests] = useState(2);
   const [chosenTables, setChosenTables] = useState<string[]>([]);
+  const [selectedFloorId, setSelectedFloorId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [request, setRequest] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [slotResult, setSlotResult] = useState<{ key: string; values: Record<string, boolean> } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [email, setEmail] = useState("");
@@ -103,6 +112,13 @@ export function CustomerWebsite() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirmed, setConfirmed] = useState("");
+
+  useEffect(() => { if (notice) toast.success(notice); }, [notice]);
+  useEffect(() => { if (error && selected) toast.error(error); }, [error, selected]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const reloadRestaurants = useCallback(async () => {
     if (!client) {
@@ -177,6 +193,7 @@ export function CustomerWebsite() {
     setMenu([]);
     setHours([]);
     setChosenTables([]);
+    setSelectedFloorId("");
     setCart([]);
     setTime("");
     Promise.all([
@@ -271,26 +288,40 @@ export function CustomerWebsite() {
     hours.find((hour) => hour.weekday === weekday),
     selected?.booking_duration_minutes ?? 90,
   );
-  const restaurantToday = selected
-    ? new Intl.DateTimeFormat("en-CA", {
-        timeZone: selected.timezone || "Asia/Kolkata",
-      }).format(new Date())
-    : "";
+  const restaurantToday = selected ? dateInZone(new Date(now), selected.timezone || "Asia/Kolkata") : "";
   const minimumBookingTime =
-    Date.now() + (selected?.minimum_notice_minutes ?? 0) * 60_000;
+    now + (selected?.minimum_notice_minutes ?? 0) * 60_000;
   const slots = allSlots.filter((slot) => {
     if (!selected || date !== restaurantToday) return true;
-    return new Date(`${date}T${slot}:00+05:30`).getTime() >= minimumBookingTime;
+    return new Date(zonedDateTimeToIso(date, slot, selected.timezone || "Asia/Kolkata")).getTime() >= minimumBookingTime;
   });
+  const slotKey = `${selected?.id ?? ""}:${date}:${guests}`;
+  const slotAvailability = slotResult?.key === slotKey ? slotResult.values : {};
+  const slotsLoading = Boolean(client && selected && date && !closedDates.includes(date) && slotResult?.key !== slotKey);
   useEffect(() => {
-    if (time && !slots.includes(time)) {
-      setTime("");
-      setChosenTables([]);
-    }
-  }, [time, slots.join(",")]);
-  const startsAt =
-    date && time ? new Date(`${date}T${time}:00+05:30`).toISOString() : "";
-  const chosenFloor = floors[0];
+    if (!client || !selected || !date || closedDates.includes(date)) return;
+    let active = true;
+    void client.rpc("booking_slot_availability", {
+      target_restaurant: selected.id,
+      target_day: date,
+      guests,
+    }).then(({ data, error: queryError }) => {
+      if (!active) return;
+      if (queryError) {
+        setError(queryError.message);
+        setSlotResult({ key: slotKey, values: {} });
+        return;
+      }
+      const next = Object.fromEntries(((data ?? []) as { slot_time: string; available: boolean }[])
+        .map((row) => [row.slot_time.slice(0, 5), row.available]));
+      setSlotResult({ key: slotKey, values: next });
+    });
+    return () => { active = false; };
+  }, [client, selected, date, guests, closedDates, slotKey]);
+  const startsAt = date && time && selected
+    ? zonedDateTimeToIso(date, time, selected.timezone || "Asia/Kolkata") : "";
+  const bookableFloors = floors.filter((floor) => tables.some((table) => table.floor_id === floor.id));
+  const chosenFloor = bookableFloors.find((floor) => floor.id === selectedFloorId) ?? bookableFloors[0] ?? floors[0];
   const floorTables = tables.filter(
     (table) => table.floor_id === chosenFloor?.id,
   );
@@ -425,7 +456,11 @@ export function CustomerWebsite() {
       !user ||
       !startsAt ||
       !chosenTables.length ||
-      totalSeats < guests
+      !slots.includes(time) ||
+      !slotAvailability[time] ||
+      totalSeats < guests ||
+      customerName.trim().length < 2 ||
+      !/^\+?[0-9]{10,15}$/.test(customerPhone.trim())
     )
       return;
     setBusy(true);
@@ -434,12 +469,14 @@ export function CustomerWebsite() {
     let pendingBookingId: string | null = null;
     try {
       const { data: bookingId, error: bookingError } = await client.rpc(
-        "create_booking",
+        "create_booking_with_contact",
         {
           target_restaurant: selected.id,
           target_start: startsAt,
           guests,
           selected_tables: chosenTables,
+          customer_name: customerName.trim(),
+          customer_phone: customerPhone.trim(),
           request_note: request,
         },
       );
@@ -707,27 +744,7 @@ export function CustomerWebsite() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={async () => {
-                          if (
-                            !window.confirm(
-                              "Cancel this booking? A paid deposit requires a refund through the restaurant.",
-                            )
-                          )
-                            return;
-                          const { error: cancelError } = (await client?.rpc(
-                            "cancel_my_booking",
-                            { target_booking: booking.id },
-                          )) ?? { error: new Error("Connection unavailable") };
-                          if (cancelError) setError(cancelError.message);
-                          else
-                            setMyBookings((current) =>
-                              current.map((item) =>
-                                item.id === booking.id
-                                  ? { ...item, status: "cancelled" }
-                                  : item,
-                              ),
-                            );
-                        }}
+                        onClick={() => setCancelBookingId(booking.id)}
                       >
                         Cancel
                       </Button>
@@ -758,16 +775,6 @@ export function CustomerWebsite() {
               </div>
               {selected.image_url && <img src={selected.image_url} alt="" />}
             </div>
-            {error && (
-              <p className="qb-error" role="alert">
-                {error}
-              </p>
-            )}
-            {notice && (
-              <p className="qb-notice" role="status">
-                {notice}
-              </p>
-            )}
             <div className="qb-booking-grid">
               <div className="qb-booking-main">
                 <section className="qb-panel">
@@ -777,12 +784,8 @@ export function CustomerWebsite() {
                       <CalendarDays size={17} /> Date
                       <Input
                         type="date"
-                        min={new Date().toISOString().slice(0, 10)}
-                        max={new Date(
-                          Date.now() + selected.advance_days * 86400000,
-                        )
-                          .toISOString()
-                          .slice(0, 10)}
+                        min={restaurantToday}
+                        max={dateInZone(new Date(now + selected.advance_days * 86400000), selected.timezone || "Asia/Kolkata")}
                         value={date}
                         onChange={(event) => {
                           setDate(event.target.value);
@@ -806,38 +809,56 @@ export function CustomerWebsite() {
                             ),
                           );
                           setChosenTables([]);
+                          setTime("");
                         }}
                       />
                     </label>
                   </div>
+                  {date && (
+                    <p className="qb-hours-line">
+                      <Clock3 size={16} /> {(() => {
+                        const dayHours = hours.find((hour) => hour.weekday === weekday);
+                        return dayHours?.closed ? "Closed on this day" : dayHours?.opens_at && dayHours?.closes_at
+                          ? `Open ${timeLabel(dayHours.opens_at)}–${timeLabel(dayHours.closes_at)}`
+                          : "Hours unavailable for this day";
+                      })()}
+                      {` · ${selected.booking_duration_minutes}-minute reservations`}
+                    </p>
+                  )}
                   {date &&
                     (closedDates.includes(date) || !slots.length ? (
                       <p className="qb-state">
                         {closedDates.includes(date)
                           ? "This restaurant is closed on the selected date."
-                          : "There are no future time slots left today. Choose another date."}
+                          : allSlots.length ? "There are no future time slots left today. Choose another date." : "No booking times are offered on this day."}
                       </p>
                     ) : (
                       <>
                         <p className="qb-field-label">
-                          <Clock3 size={17} /> Available time slots
+                          <Clock3 size={17} /> Reservation times
                         </p>
                         <div className="qb-chip-row">
                           {slots.map((slot) => (
                             <button
-                              className={
-                                time === slot ? "qb-chip active" : "qb-chip"
-                              }
+                              className={time === slot ? "qb-chip active" : "qb-chip"}
                               key={slot}
+                              type="button"
+                              disabled={slotsLoading || !slotAvailability[slot]}
+                              title={slotsLoading ? "Checking availability" : slotAvailability[slot] ? `Book at ${timeLabel(slot)}` : "No suitable tables available"}
                               onClick={() => {
                                 setTime(slot);
                                 setChosenTables([]);
                               }}
                             >
-                              {slot}
+                              {timeLabel(slot)}
                             </button>
                           ))}
                         </div>
+                        <p className="qb-help">
+                          {slotsLoading ? "Checking table availability…" : slots.some((slot) => slotAvailability[slot])
+                            ? "Unavailable times are fully booked or have no table for your party."
+                            : "No suitable tables are available on this date. Try another day or change the guest count."}
+                        </p>
                       </>
                     ))}
                 </section>
@@ -848,8 +869,19 @@ export function CustomerWebsite() {
                       ? "Choose a date and time to see availability."
                       : availabilityLoading
                         ? "Checking tables…"
-                        : "Select a suitable table. Connected tables can be merged when the restaurant allows it."}
+                        : !available.length
+                          ? "No suitable tables are available at this time. Please choose another time."
+                          : "Select an available table. Connected tables can be merged when the restaurant allows it."}
                   </p>
+                  {bookableFloors.length > 1 && (
+                    <div className="qb-chip-row" aria-label="Restaurant floors">
+                      {bookableFloors.map((floor) => <button key={floor.id} type="button"
+                        className={floor.id === chosenFloor?.id ? "qb-chip active" : "qb-chip"}
+                        onClick={() => { setSelectedFloorId(floor.id); setChosenTables([]); }}>
+                        {floor.name}
+                      </button>)}
+                    </div>
+                  )}
                   {chosenFloor ? (
                     <div className="qb-map-scroll">
                     <div
@@ -1112,6 +1144,23 @@ export function CustomerWebsite() {
                 <p className="qb-help">
                   The ₹50 deposit is deducted from your restaurant bill once.
                 </p>
+                <div className="qb-contact-fields">
+                  <h3>Your contact details</h3>
+                  <p className="qb-help">The restaurant will use these details for your reservation.</p>
+                  <label>
+                    Full name
+                    <Input required autoComplete="name" maxLength={80} value={customerName}
+                      onChange={(event) => setCustomerName(event.target.value)} placeholder="Your name" />
+                  </label>
+                  <label>
+                    Phone number
+                    <Input required type="tel" inputMode="tel" autoComplete="tel" value={customerPhone}
+                      onChange={(event) => setCustomerPhone(event.target.value.replace(/[^+0-9]/g, ""))}
+                      placeholder="10 to 15 digits" />
+                  </label>
+                  {customerPhone && !/^\+?[0-9]{10,15}$/.test(customerPhone.trim()) &&
+                    <p className="qb-field-error">Enter 10 to 15 digits, with an optional + prefix.</p>}
+                </div>
                 <label className="qb-note-label">
                   Special request
                   <textarea
@@ -1174,8 +1223,12 @@ export function CustomerWebsite() {
                     busy ||
                     !user ||
                     !startsAt ||
+                    !slots.includes(time) ||
+                    !slotAvailability[time] ||
                     !chosenTables.length ||
                     totalSeats < guests ||
+                    customerName.trim().length < 2 ||
+                    !/^\+?[0-9]{10,15}$/.test(customerPhone.trim()) ||
                     selected.temporarily_closed
                   }
                   onClick={() => void book()}
@@ -1187,6 +1240,25 @@ export function CustomerWebsite() {
           </>
         )}
       </main>
+      <Dialog open={Boolean(cancelBookingId)} onOpenChange={(open) => { if (!open) setCancelBookingId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel this booking?</DialogTitle>
+            <DialogDescription>A paid deposit may need a refund from the restaurant.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelBookingId(null)}>Keep booking</Button>
+            <Button variant="destructive" onClick={async () => {
+              if (!cancelBookingId || !client) return;
+              const id = cancelBookingId;
+              const { error: cancelError } = await client.rpc("cancel_my_booking", { target_booking: id });
+              if (cancelError) setError(cancelError.message);
+              else setMyBookings((current) => current.map((item) => item.id === id ? { ...item, status: "cancelled" } : item));
+              setCancelBookingId(null);
+            }}>Cancel booking</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

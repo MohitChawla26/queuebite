@@ -19,6 +19,8 @@ Copy `.env.example` to `.env.local` and enter your Supabase project URL and publ
 
 The connected Supabase project has the base tables, and the SQL files in `supabase/` record the booking-platform extensions and access rules applied to it. `supabase/schema.sql` is the original base schema without demo data. Row level security is enabled for all added public tables. Availability is checked by the database against opening hours, closures, table capacity, blocks, existing bookings, booking duration, and cleaning buffer; a PostgreSQL exclusion constraint rejects overlaps when two customers book concurrently.
 
+The migrations in `supabase/migrations/` add required customer name and phone fields to new online bookings and a slot-availability RPC. The customer page shows local opening hours and AM/PM slots, while restaurant staff can see each booking's contact details and call the guest.
+
 Restaurant owners or managers must add real opening hours and publish their floor map and menu before customers can book or pre-order. The public site displays honest empty states when these records are absent.
 
 ## Authentication and payments

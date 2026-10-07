@@ -2267,6 +2267,68 @@ p {
 .qb-panel { border-color: #e7e9df; border-radius: 18px; box-shadow: 0 10px 26px #18362d09; }
 .qb-chip { border-radius: 999px; }
 .qb-chip.active { background: #194534; border-color: #194534; }
+.qb-chip:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  background: #f4f5f2;
+  border-color: #dce2dc;
+  color: #738179;
+}
+.qb-hours-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 2px;
+  color: #365c4b;
+  font-size: 0.87rem;
+  font-weight: 650;
+}
+.qb-contact-fields {
+  display: grid;
+  gap: 10px;
+  margin: 22px 0;
+  padding-top: 18px;
+  border-top: 1px solid #e8ede9;
+}
+.qb-contact-fields h3 { margin: 0; }
+.qb-contact-fields .qb-help { margin: 0 0 4px; }
+.qb-contact-fields label,
+.qb-dialog-form label {
+  display: grid;
+  gap: 7px;
+  color: #365347;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.qb-field-error { margin: 0; color: #ab433b; font-size: 0.78rem; }
+.qb-reservation-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(140px, auto);
+  align-items: center;
+  gap: 22px;
+  padding: 18px 0;
+  border-top: 1px solid #e8ede9;
+}
+.qb-reservation-main,
+.qb-reservation-contact { display: grid; gap: 5px; }
+.qb-reservation-main strong { font-size: 0.96rem; color: #213e31; }
+.qb-reservation-main span,
+.qb-reservation-contact span { color: #6b7c70; font-size: 0.82rem; }
+.qb-call-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1b664b;
+  font-size: 0.83rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+.qb-call-link:hover { text-decoration: underline; }
+.qb-dialog-form { display: grid; gap: 16px; }
+@media (max-width: 700px) {
+  .qb-reservation-row { grid-template-columns: 1fr; gap: 12px; }
+}
 .qb-booking-main,
 .qb-booking-main > .qb-panel { min-width: 0; }
 .qb-map-scroll { width: 100%; max-width: 100%; }
