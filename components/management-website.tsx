@@ -19,13 +19,18 @@ import {
   Settings2,
   UtensilsCrossed,
   Phone,
+  Ticket,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { OrderBillPanel } from "@/components/order-bill-panel";
+import { ManagementWorkspaceSkeleton } from "@/components/loading-skeletons";
 import { GoogleMark } from "@/components/google-mark";
+import { BrandLogo } from "@/components/brand-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   prettyDate,
   rupees,
@@ -35,6 +40,7 @@ import {
   type Membership,
   type MenuItem,
   type Order,
+  type QueueEntry,
   type Restaurant,
   type Table,
 } from "@/lib/platform-types";
@@ -42,6 +48,7 @@ import {
 type View =
   | "restaurants"
   | "dashboard"
+  | "queue"
   | "tables"
   | "map"
   | "menu"
@@ -109,6 +116,7 @@ const days = [
 export function ManagementWebsite() {
   const client = getSupabaseBrowserClient();
   const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -120,13 +128,18 @@ export function ManagementWebsite() {
     location: "",
   });
   const [restaurantId, setRestaurantId] = useState("");
+  const [workspaceLoadedId, setWorkspaceLoadedId] = useState("");
   const [floors, setFloors] = useState<Floor[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [elements, setElements] = useState<MapElement[]>([]);
   const [states, setStates] = useState<TableState[]>([]);
+  const [queueBookingTables, setQueueBookingTables] = useState<{ table_id: string; status: string; blocked_range: string }[]>([]);
+  const [queueBlockedTables, setQueueBlockedTables] = useState<{ table_id: string; blocked_range: string }[]>([]);
+  const [queueClock, setQueueClock] = useState(Date.now());
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [bills, setBills] = useState<BillSummary[]>([]);
   const [pendingPreorders, setPendingPreorders] = useState(0);
@@ -136,12 +149,13 @@ export function ManagementWebsite() {
   const [closures, setClosures] = useState<Closure[]>([]);
   const [closureDate, setClosureDate] = useState("");
   const [closureReason, setClosureReason] = useState("");
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>("queue");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(
     null,
   );
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [orderItemsRevision, setOrderItemsRevision] = useState(0);
   const [menuSearch, setMenuSearch] = useState("");
   const [orderQty, setOrderQty] = useState(1);
   const [orderPortion, setOrderPortion] = useState<"half" | "full">("full");
@@ -190,15 +204,22 @@ export function ManagementWebsite() {
       setLoading(false);
       return;
     }
-    void client.auth.getUser().then(({ data }) => setUser(data.user));
+    void client.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      setAuthReady(true);
+    }).catch(() => setAuthReady(true));
     const { data: subscription } = client.auth.onAuthStateChange(
-      (_event, session) => setUser(session?.user ?? null),
+      (event, session) => {
+        setUser(session?.user ?? null);
+        if (event !== "INITIAL_SESSION") setAuthReady(true);
+      },
     );
     return () => subscription.subscription.unsubscribe();
   }, [client]);
 
   const loadAccess = useCallback(async () => {
-    if (!client || !user) {
+    if (!client || !authReady) return;
+    if (!user) {
       setMemberships([]);
       setIsSuperadmin(false);
       setRestaurants([]);
@@ -247,7 +268,7 @@ export function ManagementWebsite() {
       rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? ""),
     );
     setLoading(false);
-  }, [client, user]);
+  }, [client, user, authReady]);
 
   useEffect(() => {
     void loadAccess();
@@ -260,6 +281,7 @@ export function ManagementWebsite() {
       menuResult,
       categoryResult,
       bookingResult,
+      queueResult,
       orderResult,
       staffResult,
       hourResult,
@@ -283,6 +305,13 @@ export function ManagementWebsite() {
         .eq("restaurant_id", restaurantId)
         .order("starts_at", { ascending: false })
         .limit(100),
+      client
+        .from("queue_entries")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("status", ["waiting", "notified"])
+        .order("joined_at", { ascending: true })
+        .limit(200),
       client
         .from("orders")
         .select("*")
@@ -311,6 +340,8 @@ export function ManagementWebsite() {
       setCategories((categoryResult.data ?? []) as Category[]);
     if (!bookingResult.error)
       setBookings((bookingResult.data ?? []) as Booking[]);
+    if (!queueResult.error)
+      setQueueEntries((queueResult.data ?? []) as QueueEntry[]);
     if (!orderResult.error) setOrders((orderResult.data ?? []) as Order[]);
     if (!staffResult.error)
       setStaff((staffResult.data ?? []) as unknown as Staff[]);
@@ -330,6 +361,7 @@ export function ManagementWebsite() {
       menuResult,
       categoryResult,
       bookingResult,
+      queueResult,
       orderResult,
       staffResult,
       hourResult,
@@ -393,21 +425,31 @@ export function ManagementWebsite() {
         setTables(nextTables);
         setElements((elementResult.data ?? []) as MapElement[]);
         if (nextTables.length) {
-          const { data: stateRows } = await client
-            .from("table_states")
-            .select("table_id,status")
-            .in(
-              "table_id",
-              nextTables.map((table) => table.id),
-            );
-          setStates((stateRows ?? []) as TableState[]);
-        } else setStates([]);
+          const tableIds = nextTables.map((table) => table.id);
+          const [stateResult, bookingTableResult, blockedTableResult] = await Promise.all([
+            client.from("table_states").select("table_id,status").in("table_id", tableIds),
+            client.from("booking_tables").select("table_id,status,blocked_range").in("table_id", tableIds).in("status", ["pending", "confirmed", "arrived", "seated"]),
+            client.from("blocked_tables").select("table_id,blocked_range").in("table_id", tableIds),
+          ]);
+          if (stateResult.error || bookingTableResult.error || blockedTableResult.error)
+            setError(stateResult.error?.message ?? bookingTableResult.error?.message ?? blockedTableResult.error?.message ?? "Table availability unavailable.");
+          setStates((stateResult.data ?? []) as TableState[]);
+          setQueueBookingTables((bookingTableResult.data ?? []) as { table_id: string; status: string; blocked_range: string }[]);
+          setQueueBlockedTables((blockedTableResult.data ?? []) as { table_id: string; blocked_range: string }[]);
+        } else {
+          setStates([]);
+          setQueueBookingTables([]);
+          setQueueBlockedTables([]);
+        }
       }
     } else {
       setTables([]);
       setElements([]);
       setStates([]);
+      setQueueBookingTables([]);
+      setQueueBlockedTables([]);
     }
+    setWorkspaceLoadedId(restaurantId);
   }, [client, restaurantId]);
 
   useEffect(() => {
@@ -423,6 +465,16 @@ export function ManagementWebsite() {
           table: "bookings",
           filter: `restaurant_id=eq.${restaurantId}`,
         },
+        () => void reload(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "queue_entries", filter: `restaurant_id=eq.${restaurantId}` },
+        () => void reload(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "table_states" },
         () => void reload(),
       )
       .on(
@@ -451,6 +503,11 @@ export function ManagementWebsite() {
     };
   }, [client, restaurantId, reload]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setQueueClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const restaurant = restaurants.find((item) => item.id === restaurantId);
   const role = isSuperadmin
     ? "superadmin"
@@ -460,7 +517,7 @@ export function ManagementWebsite() {
   const canStaff =
     role === "superadmin" || role === "owner" || role === "manager";
   useEffect(() => {
-    if (role === "waiter" && view !== "tables") setView("tables");
+    if (role === "waiter" && !["tables", "queue"].includes(view)) setView("queue");
   }, [role, view]);
   const chosenTable = tables.find((table) => table.id === selectedTable);
   const chosenOrder = orders.find((order) => order.id === selectedOrder);
@@ -477,6 +534,42 @@ export function ManagementWebsite() {
     return `${get("year")}-${get("month")}-${get("day")}`;
   };
   const today = localDay(new Date());
+  const todayQueue = queueEntries.filter((entry) => localDay(entry.joined_at) === today);
+  const waitingQueue = todayQueue.filter((entry) => entry.status === "waiting");
+  const calledQueue = todayQueue.filter((entry) => entry.status === "notified");
+  const peopleWaiting = waitingQueue.reduce((sum, entry) => sum + entry.party_size, 0);
+  const queueWindowEnd = queueClock + ((restaurant?.booking_duration_minutes ?? 90) + (restaurant?.buffer_minutes ?? 15)) * 60_000;
+  const overlapsQueueWindow = (range: string) => {
+    const bounds = [...range.matchAll(/"([^"]+)"/g)].map((match) => Date.parse(match[1]));
+    return bounds.length === 2 && bounds[0] < queueWindowEnd && bounds[1] > queueClock;
+  };
+  const fittingQueueTables = waitingQueue.length
+    ? tables.filter((table) => table.seats >= waitingQueue[0].party_size && floors.some((floor) => floor.id === table.floor_id && floor.active))
+    : [];
+  const freeQueueTables = fittingQueueTables.filter((table) =>
+    (states.find((state) => state.table_id === table.id)?.status ?? "available") === "available",
+  );
+  const reservableQueueTables = freeQueueTables.filter((table) =>
+    !queueBookingTables.some((booking) => booking.table_id === table.id && overlapsQueueWindow(booking.blocked_range)) &&
+    !queueBlockedTables.some((block) => block.table_id === table.id && overlapsQueueWindow(block.blocked_range)),
+  );
+  const conflictingBooking = queueBookingTables.find((booking) =>
+    freeQueueTables.some((table) => table.id === booking.table_id) && overlapsQueueWindow(booking.blocked_range),
+  );
+  const conflictingBlock = queueBlockedTables.find((block) =>
+    freeQueueTables.some((table) => table.id === block.table_id) && overlapsQueueWindow(block.blocked_range),
+  );
+  const queueRangeEnd = (range: string) => {
+    const bounds = [...range.matchAll(/"([^"]+)"/g)];
+    return bounds[1] ? new Intl.DateTimeFormat("en-IN", { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(bounds[1][1])) : "later";
+  };
+  const queueAvailabilityMessage = !waitingQueue.length ? "" :
+    !fittingQueueTables.length ? `No active table seats ${waitingQueue[0].party_size} guests. Add a suitable table in Map.` :
+    !freeQueueTables.length ? "Tables that fit this group are currently occupied or unavailable. Release a table when it is ready." :
+    reservableQueueTables.length ? "" :
+    conflictingBooking ? `${tables.find((table) => table.id === conflictingBooking.table_id)?.code ?? "A table"} has a reservation overlapping this seating window (through ${queueRangeEnd(conflictingBooking.blocked_range)}). Check Reservations if the guest has not arrived.` :
+    conflictingBlock ? `${tables.find((table) => table.id === conflictingBlock.table_id)?.code ?? "A table"} is blocked until ${queueRangeEnd(conflictingBlock.blocked_range)}.` :
+    "No suitable table is free for the next group yet.";
   const todayOrders = orders.filter(
     (order) => localDay(order.created_at) === today,
   );
@@ -843,18 +936,23 @@ export function ManagementWebsite() {
     if (!client || !chosenOrder || !item.available) return;
     const price = orderPortion === "half" ? item.half_price : item.full_price;
     if (price == null) return;
-    await action(
-      () =>
-        client.from("order_items").insert({
-          order_id: chosenOrder.id,
-          menu_item_id: item.id,
-          portion: orderPortion,
-          quantity: orderQty,
-          unit_price_paise: Math.round(Number(price) * 100),
-          notes: orderNote || null,
-        }),
-      "Item added to order.",
-    );
+    setBusy(true); setError(""); setNotice("");
+    const { error: addError } = await client.from("order_items").insert({
+      order_id: chosenOrder.id,
+      menu_item_id: item.id,
+      portion: orderPortion,
+      quantity: orderQty,
+      unit_price_paise: Math.round(Number(price) * 100),
+      notes: orderNote || null,
+    });
+    if (addError) setError(addError.message);
+    else {
+      setOrderItemsRevision((current) => current + 1);
+      setNotice("Item added to order.");
+      setOrderNote("");
+      await reload();
+    }
+    setBusy(false);
   }
 
   async function createRestaurant(event: FormEvent<HTMLFormElement>) {
@@ -1110,15 +1208,12 @@ export function ManagementWebsite() {
         <p className="qb-error">Supabase connection is not configured.</p>
       </div>
     );
+  if (!authReady || loading)
+    return <ManagementWorkspaceSkeleton />;
   if (!user)
     return (
       <div className="qb-manage-auth">
-        <a className="qb-logo" href="/">
-          <span className="qb-logo-mark">
-            <UtensilsCrossed size={19} />
-          </span>{" "}
-          QueueBite
-        </a>
+        <div className="qb-auth-header"><a className="qb-logo" href="/"><BrandLogo /></a><ThemeToggle /></div>
         <div className="qb-panel qb-auth-card">
           <p className="qb-kicker">RESTAURANT MANAGEMENT</p>
           <h1>Sign in to manage your restaurant</h1>
@@ -1173,21 +1268,14 @@ export function ManagementWebsite() {
         </div>
       </div>
     );
-  if (loading)
-    return <div className="qb-manage-auth">Loading your restaurants…</div>;
   if (!restaurants.length && isSuperadmin)
     return (
       <div className="qb-admin-setup">
         <header>
           <a className="qb-logo" href="/">
-            <span className="qb-logo-mark">
-              <UtensilsCrossed size={19} />
-            </span>{" "}
-            QueueBite
+            <BrandLogo />
           </a>
-          <Button variant="outline" onClick={() => void client.auth.signOut()}>
-            Sign out
-          </Button>
+          <div className="qb-header-actions"><ThemeToggle /><Button className="qb-signout" variant="outline" onClick={() => void client.auth.signOut()}><LogOut size={16} /> Sign out</Button></div>
         </header>
         <main>
           <p className="qb-kicker">RESTAURANT WORKSPACE</p>
@@ -1203,21 +1291,20 @@ export function ManagementWebsite() {
   if (!restaurants.length)
     return (
       <div className="qb-manage-auth">
-        <a href="/" className="qb-logo">
-          QueueBite
-        </a>
+        <div className="qb-auth-header"><a href="/" className="qb-logo"><BrandLogo /></a><ThemeToggle /></div>
         <div className="qb-panel">
           <h1>No restaurant access</h1>
           <p>
             Your account has not been assigned to a restaurant. Ask an owner to
             invite you.
           </p>
-          <Button variant="outline" onClick={() => void client.auth.signOut()}>
-            Sign out
-          </Button>
+          <Button className="qb-signout" variant="outline" onClick={() => void client.auth.signOut()}><LogOut size={16} /> Sign out</Button>
         </div>
       </div>
     );
+
+  if (restaurantId && workspaceLoadedId !== restaurantId)
+    return <ManagementWorkspaceSkeleton />;
 
   const navigation: {
     id: View;
@@ -1230,6 +1317,12 @@ export function ManagementWebsite() {
       label: "Restaurants",
       icon: <Building2 size={19} />,
       allowed: isSuperadmin,
+    },
+    {
+      id: "queue",
+      label: "Live queue",
+      icon: <Ticket size={19} />,
+      allowed: true,
     },
     {
       id: "dashboard",
@@ -1279,10 +1372,7 @@ export function ManagementWebsite() {
     <div className="qb-management">
       <aside className="qb-sidebar">
         <a className="qb-logo" href="/">
-          <span className="qb-logo-mark">
-            <UtensilsCrossed size={19} />
-          </span>{" "}
-          QueueBite
+          <BrandLogo />
         </a>
         <span className="qb-sidebar-label">RESTAURANT WORKSPACE</span>
         <select
@@ -1316,12 +1406,12 @@ export function ManagementWebsite() {
             ))}
         </nav>
         <div className="qb-sidebar-bottom">
-          <small>
-            {role} · {user.email}
-          </small>
-          <Button variant="ghost" onClick={() => void client.auth.signOut()}>
-            Sign out
-          </Button>
+          <div className="qb-sidebar-profile">
+            <span className="qb-profile-avatar">{(String(user.user_metadata?.full_name || user.user_metadata?.name || user.email || "U").trim()[0] || "U").toUpperCase()}</span>
+            <div><strong>{String(user.user_metadata?.full_name || user.user_metadata?.name || "My profile")}</strong><small>{role} · {user.email}</small></div>
+          </div>
+          <ThemeToggle />
+          <Button className="qb-signout" variant="outline" onClick={() => void client.auth.signOut()}><LogOut size={16} /> Sign out</Button>
           <a href="/">Customer website</a>
         </div>
       </aside>
@@ -1360,15 +1450,6 @@ export function ManagementWebsite() {
                 : "Image appears on the customer listing."}
             </span>
           </div>
-        )}
-        {view === "tables" && chosenOrder && (
-          <OrderBillPanel
-            order={chosenOrder}
-            table={chosenTable}
-            menu={menu}
-            canManage={canManage}
-            onChange={reload}
-          />
         )}
         {view === "tables" && chosenTable && canManage && (
           <div className="qb-actions">
@@ -1650,6 +1731,60 @@ export function ManagementWebsite() {
             </Button>
           </section>
         )}
+        {view === "queue" && (
+          <div className="qb-staff-queue">
+            <section className="qb-panel qb-staff-queue-head">
+              <div>
+                <p className="qb-kicker">TODAY'S LIVE LINE</p>
+                <h2>Keep the line moving</h2>
+                <p>Call the next group when a suitable table is free. QueueBite assigns the smallest available table that fits their party.</p>
+                {queueAvailabilityMessage && <div className="qb-queue-availability" role="status">
+                  <span>{queueAvailabilityMessage}</span>
+                  {conflictingBooking && canManage && <button type="button" onClick={() => setView("bookings")}>View reservations</button>}
+                </div>}
+              </div>
+              <Button disabled={busy || !waitingQueue.length || !!queueAvailabilityMessage} onClick={() => void action(
+                () => client.rpc("call_next_queue", { target_restaurant: restaurantId }),
+                "Next group called and assigned a table.",
+              )}>Call next & assign table</Button>
+            </section>
+            <div className="qb-queue-stats">
+              <div><strong>{waitingQueue.length}</strong><span>groups waiting</span></div>
+              <div><strong>{peopleWaiting}</strong><span>people waiting</span></div>
+              <div><strong>{calledQueue.length}</strong><span>groups called</span></div>
+            </div>
+            <section className="qb-panel">
+              <h2>Waiting in order</h2>
+              {waitingQueue.length ? waitingQueue.map((entry, index) => (
+                <div className="qb-staff-queue-row" key={entry.id}>
+                  <span className="qb-staff-queue-number">#{index + 1}</span>
+                  <div className="qb-staff-queue-person"><strong>{entry.guest_name}</strong><span>{entry.party_size} guests · Joined {new Intl.DateTimeFormat("en-IN", { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(entry.joined_at))}</span></div>
+                  {entry.phone ? <a className="qb-call-link" href={`tel:${entry.phone}`}><Phone size={15} /> {entry.phone}</a> : <span>Phone unavailable</span>}
+                  <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
+                    if (await ask({ title: `Mark ${entry.guest_name} as missed?`, description: "Their place will be removed from the waiting line.", submitLabel: "Mark missed", destructive: true }))
+                      void action(() => client.rpc("update_queue_place", { target_entry: entry.id, next_status: "missed" }), "Queue place marked missed.");
+                  }}>Mark missed</Button>
+                </div>
+              )) : <p className="qb-state">No one is waiting right now.</p>}
+            </section>
+            {calledQueue.length > 0 && <section className="qb-panel">
+              <h2>Called to a table</h2>
+              {calledQueue.map((entry) => <div className="qb-staff-queue-row" key={entry.id}>
+                <span className="qb-staff-queue-number ready"><Ticket size={20} /></span>
+                <div className="qb-staff-queue-person"><strong>{entry.guest_name}</strong><span>{entry.party_size} guests · Table {tables.find((table) => table.id === entry.assigned_table_id)?.code ?? "assigned"}</span></div>
+                {entry.phone ? <a className="qb-call-link" href={`tel:${entry.phone}`}><Phone size={15} /> Call</a> : <span>Phone unavailable</span>}
+                <div className="qb-actions"><Button size="sm" disabled={busy} onClick={() => void action(
+                  () => client.rpc("update_queue_place", { target_entry: entry.id, next_status: "seated" }),
+                  "Group seated.",
+                )}>Seat group</Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
+                    if (await ask({ title: `Mark ${entry.guest_name} as missed?`, description: "Their assigned table will be released.", submitLabel: "Mark missed", destructive: true }))
+                      void action(() => client.rpc("update_queue_place", { target_entry: entry.id, next_status: "missed" }), "Queue place marked missed.");
+                  }}>Missed</Button></div>
+              </div>)}
+            </section>}
+          </div>
+        )}
         {view === "dashboard" && (
           <>
             <div className="qb-stat-grid">
@@ -1661,6 +1796,10 @@ export function ManagementWebsite() {
               <div>
                 <span>Orders today</span>
                 <strong>{todayOrders.length}</strong>
+              </div>
+              <div>
+                <span>People waiting</span>
+                <strong>{peopleWaiting}</strong>
               </div>
               <div>
                 <span>Available tables</span>
@@ -1726,7 +1865,7 @@ export function ManagementWebsite() {
           </>
         )}
         {view === "tables" && (
-          <div className="qb-ops-grid">
+          <div className={chosenOrder ? "qb-ops-grid qb-tables-workspace" : "qb-ops-grid"}>
             <section className="qb-panel">
               <h2>Tables</h2>
               {tables.length ? (
@@ -1759,58 +1898,33 @@ export function ManagementWebsite() {
                 <p className="qb-state">No tables have been added.</p>
               )}
             </section>
-            <section className="qb-panel">
-              <h2>
-                {chosenTable ? `Table ${chosenTable.code}` : "Open a table"}
-              </h2>
+            <section className="qb-panel qb-pos-panel">
+              <div className="qb-pos-table-heading">
+                <h2>{chosenTable ? `Table ${chosenTable.code}` : "Open a table"}</h2>
+                {chosenTable && <span className="qb-pos-table-status">{states.find((item) => item.table_id === chosenTable.id)?.status ?? "available"}</span>}
+              </div>
               {chosenTable ? (
                 <>
-                  <p>
-                    Capacity: {chosenTable.seats} ·{" "}
-                    {states.find((item) => item.table_id === chosenTable.id)
-                      ?.status ?? "available"}
-                  </p>
-                  <div className="qb-actions">
-                    <Button onClick={() => void startOrder()} disabled={busy}>
-                      Open POS
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        void action(
-                          () =>
-                            client.from("table_states").upsert({
-                              table_id: chosenTable.id,
-                              status: "occupied",
-                              updated_by: user.id,
-                            }),
+                  <p className="qb-pos-capacity">{chosenTable.seats} seats</p>
+                  <div className="qb-pos-table-actions">
+                    {!chosenOrder && <Button onClick={() => void startOrder()} disabled={busy}>Open POS</Button>}
+                    <details className="qb-pos-table-tools">
+                      <summary>Table controls</summary>
+                      <div className="qb-actions">
+                        <Button variant="outline" disabled={busy} onClick={() => void action(
+                          () => client.from("table_states").upsert({ table_id: chosenTable.id, status: "occupied", updated_by: user.id }),
                           "Table marked occupied.",
-                        )
-                      }
-                    >
-                      Mark occupied
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        void action(
-                          () =>
-                            client.from("table_states").upsert({
-                              table_id: chosenTable.id,
-                              status: "available",
-                              updated_by: user.id,
-                            }),
+                        )}>Mark occupied</Button>
+                        <Button variant="outline" disabled={busy || queueEntries.some((entry) => entry.status === "notified" && entry.assigned_table_id === chosenTable.id)} onClick={() => void action(
+                          () => client.from("table_states").upsert({ table_id: chosenTable.id, status: "available", updated_by: user.id }),
                           "Table available.",
-                        )
-                      }
-                    >
-                      Release table
-                    </Button>
+                        )}>Release table</Button>
+                      </div>
+                    </details>
                   </div>
                   {chosenOrder && (
                     <>
-                      <h3>Order {chosenOrder.id.slice(0, 8)}</h3>
-                      <p>Status: {chosenOrder.status}</p>
+                      <div className="qb-pos-order-head"><h3>Order {chosenOrder.id.slice(0, 8)}</h3><span>{chosenOrder.status}</span></div>
                       <div className="qb-fields">
                         <label>
                           Portion
@@ -1835,21 +1949,17 @@ export function ManagementWebsite() {
                             max={99}
                             value={orderQty}
                             onChange={(event) =>
-                              setOrderQty(Number(event.target.value))
+                              setOrderQty(Math.max(1, Math.min(99, Number(event.target.value) || 1)))
                             }
                           />
                         </label>
                       </div>
-                      <Input
-                        placeholder="Kitchen notes"
-                        value={orderNote}
-                        onChange={(event) => setOrderNote(event.target.value)}
-                      />
-                      <Input
-                        placeholder="Search menu"
-                        value={menuSearch}
-                        onChange={(event) => setMenuSearch(event.target.value)}
-                      />
+                      <label className="qb-pos-field">Kitchen notes
+                        <Input placeholder="Optional instructions" value={orderNote} onChange={(event) => setOrderNote(event.target.value)} />
+                      </label>
+                      <label className="qb-pos-field">Find a dish
+                        <Input placeholder="Search menu" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} />
+                      </label>
                       <div className="qb-pos-menu">
                         {menu
                           .filter((item) =>
@@ -1877,7 +1987,7 @@ export function ManagementWebsite() {
                               <Button
                                 size="sm"
                                 disabled={
-                                  !item.available ||
+                                  busy || !item.available ||
                                   (orderPortion === "half"
                                     ? item.half_price == null
                                     : item.full_price == null)
@@ -1892,12 +2002,13 @@ export function ManagementWebsite() {
                           <p className="qb-state">No dishes on the menu.</p>
                         )}
                       </div>
-                      <div className="qb-actions">
+                      <div className="qb-actions qb-order-status-actions">
                         {["accepted", "preparing", "ready", "served"].map(
                           (status) => (
                             <Button
                               key={status}
-                              variant="outline"
+                              variant={chosenOrder.status === status ? "default" : "outline"}
+                              disabled={busy || chosenOrder.status === status}
                               onClick={() =>
                                 void action(
                                   () =>
@@ -1909,7 +2020,7 @@ export function ManagementWebsite() {
                                 )
                               }
                             >
-                              {status}
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
                             </Button>
                           ),
                         )}
@@ -1933,6 +2044,17 @@ export function ManagementWebsite() {
                 <p className="qb-state">Select a table to take an order.</p>
               )}
             </section>
+            {chosenOrder && (
+              <OrderBillPanel
+                key={chosenOrder.id}
+                order={chosenOrder}
+                table={chosenTable}
+                menu={menu}
+                canManage={canManage}
+                refreshNonce={orderItemsRevision}
+                onChange={reload}
+              />
+            )}
           </div>
         )}
         {view === "map" && (

@@ -13,8 +13,16 @@ import {
   UtensilsCrossed,
   ArrowRight,
   Sparkles,
+  Ticket,
+  ChevronDown,
+  LogOut,
+  Building2,
 } from "lucide-react";
 import { GoogleMark } from "@/components/google-mark";
+import { BrandLogo } from "@/components/brand-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { CustomerQueue } from "@/components/customer-queue";
+import { BookingPageSkeleton, RestaurantCardsSkeleton } from "@/components/loading-skeletons";
 import { dateInZone, timeLabel, zonedDateTimeToIso } from "@/lib/booking-time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +51,17 @@ type Hours = {
   closed: boolean;
 };
 type Available = { table_id: string };
+type TimePeriod = "morning" | "afternoon" | "evening";
+const timePeriods: { id: TimePeriod; label: string }[] = [
+  { id: "morning", label: "Morning" },
+  { id: "afternoon", label: "Afternoon" },
+  { id: "evening", label: "Evening" },
+];
+
+function periodForTime(slot: string): TimePeriod {
+  const hour = Number(slot.slice(0, 2));
+  return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+}
 type RazorpayCheckout = new (options: Record<string, unknown>) => {
   open: () => void;
 };
@@ -80,6 +99,8 @@ export function CustomerWebsite() {
   const client = getSupabaseBrowserClient();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [restaurantDataId, setRestaurantDataId] = useState("");
+  const [visitMode, setVisitMode] = useState<"choice" | "booking" | "queue">("choice");
   const [floors, setFloors] = useState<Floor[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [elements, setElements] = useState<MapElement[]>([]);
@@ -92,6 +113,7 @@ export function CustomerWebsite() {
   const [category, setCategory] = useState("All");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>("morning");
   const [guests, setGuests] = useState(2);
   const [chosenTables, setChosenTables] = useState<string[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState("");
@@ -134,9 +156,36 @@ export function CustomerWebsite() {
       .eq("active", true)
       .order("name");
     if (queryError) setError(queryError.message);
-    else setRestaurants((data ?? []) as Restaurant[]);
+    else {
+      const nextRestaurants = (data ?? []) as Restaurant[];
+      setRestaurants(nextRestaurants);
+      const params = new URLSearchParams(window.location.search);
+      const linked = nextRestaurants.find((item) => item.slug === params.get("restaurant"));
+      if (linked) {
+        setSelected(linked);
+        setVisitMode(params.get("mode") === "queue" ? "queue" : params.get("mode") === "booking" ? "booking" : "choice");
+      }
+    }
     setLoading(false);
   }, [client]);
+
+  function chooseRestaurant(restaurant: Restaurant) {
+    setSelected(restaurant);
+    setVisitMode("choice");
+    window.history.replaceState(null, "", `/?restaurant=${encodeURIComponent(restaurant.slug)}`);
+  }
+
+  function chooseMode(mode: "booking" | "queue") {
+    if (!selected) return;
+    setVisitMode(mode);
+    window.history.replaceState(null, "", `/?restaurant=${encodeURIComponent(selected.slug)}&mode=${mode}`);
+  }
+
+  function resetRestaurant() {
+    setSelected(null);
+    setVisitMode("choice");
+    window.history.replaceState(null, "", "/");
+  }
 
   useEffect(() => {
     void reloadRestaurants();
@@ -225,6 +274,7 @@ export function CustomerWebsite() {
       ].find((result) => result.error)?.error;
       if (failure) {
         setError(failure.message);
+        setRestaurantDataId(selected.id);
         return;
       }
       const nextFloors = (floorResult.data ?? []) as Floor[];
@@ -254,6 +304,7 @@ export function CustomerWebsite() {
           setElements((elementResult.data ?? []) as MapElement[]);
         }
       }
+      setRestaurantDataId(selected.id);
     });
     const channel = client
       .channel(`customer-${selected.id}`)
@@ -298,6 +349,12 @@ export function CustomerWebsite() {
   const slotKey = `${selected?.id ?? ""}:${date}:${guests}`;
   const slotAvailability = slotResult?.key === slotKey ? slotResult.values : {};
   const slotsLoading = Boolean(client && selected && date && !closedDates.includes(date) && slotResult?.key !== slotKey);
+  const availableSlots = slots.filter((slot) => slotAvailability[slot]);
+  const availablePeriods = timePeriods.filter((period) => availableSlots.some((slot) => periodForTime(slot) === period.id));
+  const activePeriod = availablePeriods.some((period) => period.id === timePeriod)
+    ? timePeriod
+    : availablePeriods[0]?.id;
+  const visibleSlots = availableSlots.filter((slot) => periodForTime(slot) === activePeriod);
   useEffect(() => {
     if (!client || !selected || !date || closedDates.includes(date)) return;
     let active = true;
@@ -584,30 +641,33 @@ export function CustomerWebsite() {
   return (
     <div className="qb-site">
       <header className="qb-topbar">
-        <a className="qb-logo" href="/" onClick={() => setSelected(null)}>
-          <span className="qb-logo-mark">
-            <UtensilsCrossed size={19} />
-          </span>{" "}
-          QueueBite
+        <a className="qb-logo" href="/" onClick={() => resetRestaurant()}>
+          <BrandLogo />
         </a>
         <nav aria-label="Main navigation">
           <a className="active" href="/">Explore restaurants</a>
-          <a href="/manage">For restaurants <ArrowRight size={14} /></a>
+          <a href="/manage" aria-label="Restaurant workspace"><Building2 className="qb-mobile-manage-icon" size={19} /><span>For restaurants</span> <ArrowRight size={14} /></a>
         </nav>
-        <div className="qb-user">
-          {user ? (
-            <>
-              <span>{user.email}</span>
-              <Button
-                variant="ghost"
-                onClick={() => void client?.auth.signOut()}
-              >
-                Sign out
-              </Button>
-            </>
-          ) : (
-            <span className="qb-guest-pill">No account needed to browse</span>
-          )}
+        <div className="qb-header-actions">
+          <ThemeToggle />
+          {user ? <details className="qb-profile-menu">
+            <summary>
+              <span className="qb-profile-avatar">{(String(user.user_metadata?.full_name || user.user_metadata?.name || user.email || "U").trim()[0] || "U").toUpperCase()}</span>
+              <span className="qb-profile-trigger-name">{String(user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "My profile")}</span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </summary>
+            <div className="qb-profile-popover">
+              <p className="qb-profile-eyebrow">YOUR PROFILE</p>
+              <strong>{String(user.user_metadata?.full_name || user.user_metadata?.name || "QueueBite guest")}</strong>
+              <span className="qb-profile-email">{user.email}</span>
+              <button className="qb-profile-bookings-link" type="button" onClick={(event) => {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+                resetRestaurant();
+                window.requestAnimationFrame(() => document.getElementById("my-bookings")?.scrollIntoView({ behavior: "smooth" }));
+              }}>Your bookings <span>{myBookings.length}</span></button>
+              <button className="qb-signout" type="button" onClick={() => void client?.auth.signOut()}><LogOut size={16} /> Sign out</button>
+            </div>
+          </details> : <span className="qb-guest-pill">Browse freely</span>}
         </div>
       </header>
       <main className="qb-main">
@@ -625,7 +685,7 @@ export function CustomerWebsite() {
             <Button
               onClick={() => {
                 setConfirmed("");
-                setSelected(null);
+                resetRestaurant();
               }}
             >
               Find another table
@@ -635,12 +695,12 @@ export function CustomerWebsite() {
           <>
             <section className="qb-hero">
               <div className="qb-hero-copy">
-                <p className="qb-hero-eyebrow"><Sparkles size={15} /> A BETTER WAY TO DINE OUT</p>
-                <h1>Your table is <em>waiting.</em></h1>
-                <p>Discover a place you’ll love, pick the exact table you want, and make the evening yours.</p>
+                <p className="qb-hero-eyebrow"><Sparkles size={15} /> LESS WAITING. MORE DINING.</p>
+                <h1>Keep your place <em>in line.</em></h1>
+                <p>Join a restaurant's live queue from anywhere and follow your position. Planning ahead? Reserve a table instead.</p>
                 <div className="qb-hero-points">
-                  <span><CalendarDays size={17} /> Book in a few taps</span>
-                  <span><MapPin size={17} /> Choose your own table</span>
+                  <span><Ticket size={17} /> Join the live queue</span>
+                  <span><CalendarDays size={17} /> Reserve for later</span>
                 </div>
               </div>
               <div className="qb-hero-art" aria-hidden="true">
@@ -652,7 +712,7 @@ export function CustomerWebsite() {
             </section>
             <div className="qb-discover-head">
               <div>
-                <p className="qb-kicker">EXPLORE & RESERVE</p>
+                <p className="qb-kicker">EXPLORE & JOIN</p>
                 <h2>Find your next favourite spot</h2>
                 <p>Browse restaurants and see what’s available.</p>
               </div>
@@ -667,7 +727,7 @@ export function CustomerWebsite() {
               </div>
             </div>
             {loading ? (
-              <p className="qb-state">Loading restaurants…</p>
+              <RestaurantCardsSkeleton />
             ) : error ? (
               <p className="qb-error" role="alert">
                 {error}
@@ -685,7 +745,7 @@ export function CustomerWebsite() {
                   <button
                     className="qb-restaurant-card"
                     key={restaurant.id}
-                    onClick={() => setSelected(restaurant)}
+                    onClick={() => chooseRestaurant(restaurant)}
                   >
                     <div className="qb-restaurant-photo">
                       {restaurant.image_url ? (
@@ -718,16 +778,17 @@ export function CustomerWebsite() {
                       >
                         {restaurant.temporarily_closed
                           ? "Temporarily closed"
-                          : <>Explore tables <ArrowRight size={15} /></>}
+                          : <>View queue & tables <ArrowRight size={15} /></>}
                       </span>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-            {user && myBookings.length > 0 && (
-              <section className="qb-panel qb-my-bookings">
+            {user && (
+              <section className="qb-panel qb-my-bookings" id="my-bookings">
                 <h2>Your bookings</h2>
+                {myBookings.length === 0 && <p className="qb-help">Your reservations will appear here after you book a table.</p>}
                 {myBookings.map((booking) => (
                   <div className="qb-list-row" key={booking.id}>
                     <strong>
@@ -755,18 +816,24 @@ export function CustomerWebsite() {
             )}
             <div className="qb-how-it-works">
               <div><span>01</span><strong>Discover a place</strong><p>Find the restaurant that fits your plans.</p></div>
-              <div><span>02</span><strong>Pick your spot</strong><p>See the floor plan and choose your table.</p></div>
-              <div><span>03</span><strong>Make it yours</strong><p>Confirm your booking and look forward to it.</p></div>
+              <div><span>02</span><strong>Join the queue</strong><p>Watch your position update while you wait.</p></div>
+              <div><span>03</span><strong>Get your table</strong><p>The restaurant assigns one that fits your group.</p></div>
             </div>
           </>
         ) : (
           <>
-            <button className="qb-back" onClick={() => setSelected(null)}>
-              ← All restaurants
+            <button className="qb-back" onClick={() => {
+              if (visitMode === "choice") resetRestaurant();
+              else {
+                setVisitMode("choice");
+                window.history.replaceState(null, "", `/?restaurant=${encodeURIComponent(selected.slug)}`);
+              }
+            }}>
+              {visitMode === "choice" ? "← All restaurants" : "← Choose another option"}
             </button>
             <div className="qb-restaurant-heading">
               <div>
-                <p className="qb-kicker">TABLE RESERVATION</p>
+                <p className="qb-kicker">{visitMode === "queue" ? "JOIN THE QUEUE" : visitMode === "booking" ? "TABLE RESERVATION" : "YOUR VISIT"}</p>
                 <h1>{selected.name}</h1>
                 <p>
                   {selected.cuisine || "Restaurant"} ·{" "}
@@ -775,7 +842,20 @@ export function CustomerWebsite() {
               </div>
               {selected.image_url && <img src={selected.image_url} alt="" />}
             </div>
-            <div className="qb-booking-grid">
+            {visitMode === "choice" && <section className="qb-visit-choice">
+              <h2>How would you like to visit?</h2>
+              <p>Keep your place in the live line, or book a specific table for later.</p>
+              <div className="qb-visit-actions">
+                <button type="button" className="qb-visit-action primary" onClick={() => chooseMode("queue")}>
+                  <Ticket size={27} /><strong>Join queue</strong><span>Join now and follow your live position.</span><ArrowRight size={20} />
+                </button>
+                <button type="button" className="qb-visit-action" onClick={() => chooseMode("booking")}>
+                  <CalendarDays size={27} /><strong>Table reservation</strong><span>Choose a time and a table in advance.</span><ArrowRight size={20} />
+                </button>
+              </div>
+            </section>}
+            {visitMode === "queue" && <CustomerQueue key={selected.id} restaurant={selected} user={user} />}
+            {visitMode === "booking" && (restaurantDataId !== selected.id ? <BookingPageSkeleton /> : <div className="qb-booking-grid">
               <div className="qb-booking-main">
                 <section className="qb-panel">
                   <h2>1. Choose a time</h2>
@@ -790,6 +870,7 @@ export function CustomerWebsite() {
                         onChange={(event) => {
                           setDate(event.target.value);
                           setTime("");
+                          setTimePeriod("morning");
                           setChosenTables([]);
                         }}
                       />
@@ -810,6 +891,7 @@ export function CustomerWebsite() {
                           );
                           setChosenTables([]);
                           setTime("");
+                          setTimePeriod("morning");
                         }}
                       />
                     </label>
@@ -834,31 +916,44 @@ export function CustomerWebsite() {
                       </p>
                     ) : (
                       <>
-                        <p className="qb-field-label">
-                          <Clock3 size={17} /> Reservation times
-                        </p>
-                        <div className="qb-chip-row">
-                          {slots.map((slot) => (
-                            <button
-                              className={time === slot ? "qb-chip active" : "qb-chip"}
-                              key={slot}
-                              type="button"
-                              disabled={slotsLoading || !slotAvailability[slot]}
-                              title={slotsLoading ? "Checking availability" : slotAvailability[slot] ? `Book at ${timeLabel(slot)}` : "No suitable tables available"}
-                              onClick={() => {
-                                setTime(slot);
-                                setChosenTables([]);
-                              }}
-                            >
-                              {timeLabel(slot)}
-                            </button>
-                          ))}
+                        <div className="qb-time-heading">
+                          <p className="qb-field-label"><Clock3 size={17} /> Choose a reservation time</p>
+                          {!slotsLoading && availableSlots.length > 0 && <span>{availableSlots.length} available</span>}
                         </div>
-                        <p className="qb-help">
-                          {slotsLoading ? "Checking table availability…" : slots.some((slot) => slotAvailability[slot])
-                            ? "Unavailable times are fully booked or have no table for your party."
-                            : "No suitable tables are available on this date. Try another day or change the guest count."}
-                        </p>
+                        {slotsLoading ? (
+                          <div className="qb-time-picker" role="status" aria-label="Checking reservation times">
+                            <div className="qb-time-periods" aria-hidden="true">{[0, 1, 2].map((index) => <span className="qb-skeleton qb-time-period-skeleton" key={index} />)}</div>
+                            <div className="qb-time-grid" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((index) => <span className="qb-skeleton qb-time-option-skeleton" key={index} />)}</div>
+                          </div>
+                        ) : availableSlots.length ? (
+                          <div className="qb-time-picker">
+                            {availablePeriods.length > 1 && <div className="qb-time-periods" role="group" aria-label="Time of day">
+                              {availablePeriods.map((period) => {
+                                const count = availableSlots.filter((slot) => periodForTime(slot) === period.id).length;
+                                return <button
+                                  key={period.id}
+                                  type="button"
+                                  className={activePeriod === period.id ? "qb-time-period active" : "qb-time-period"}
+                                  aria-pressed={activePeriod === period.id}
+                                  onClick={() => setTimePeriod(period.id)}
+                                >{period.label} <span>{count}</span></button>;
+                              })}
+                            </div>}
+                            <div className="qb-time-grid" role="group" aria-label={`${timePeriods.find((period) => period.id === activePeriod)?.label ?? "Available"} reservation times`}>
+                              {visibleSlots.map((slot) => <button
+                                className={time === slot ? "qb-time-option active" : "qb-time-option"}
+                                key={slot}
+                                type="button"
+                                aria-pressed={time === slot}
+                                onClick={() => {
+                                  setTime(slot);
+                                  setChosenTables([]);
+                                }}
+                              >{timeLabel(slot)}</button>)}
+                            </div>
+                            <p className="qb-time-note">Only times with a suitable table for your party are shown.{time ? ` Selected: ${timeLabel(time)}.` : ""}</p>
+                          </div>
+                        ) : <p className="qb-state qb-time-empty">No suitable tables are available on this date. Try another day or change the guest count.</p>}
                       </>
                     ))}
                 </section>
@@ -868,7 +963,7 @@ export function CustomerWebsite() {
                     {!time
                       ? "Choose a date and time to see availability."
                       : availabilityLoading
-                        ? "Checking tables…"
+                        ? ""
                         : !available.length
                           ? "No suitable tables are available at this time. Please choose another time."
                           : "Select an available table. Connected tables can be merged when the restaurant allows it."}
@@ -882,7 +977,7 @@ export function CustomerWebsite() {
                       </button>)}
                     </div>
                   )}
-                  {chosenFloor ? (
+                  {availabilityLoading && time ? <div className="qb-skeleton qb-skeleton-map" role="status" aria-label="Checking available tables" /> : chosenFloor ? (
                     <div className="qb-map-scroll">
                     <div
                       className="qb-map"
@@ -949,11 +1044,11 @@ export function CustomerWebsite() {
                       The restaurant has not published a floor map yet.
                     </p>
                   )}
-                  <div className="qb-legend">
+                  {!availabilityLoading && <div className="qb-legend">
                     <span>● Available</span>
                     <span>● Selected</span>
                     <span>● Unavailable</span>
-                  </div>
+                  </div>}
                   {chosenTables.length > 0 && (
                     <p className="qb-selection">
                       {chosenTables
@@ -1236,7 +1331,7 @@ export function CustomerWebsite() {
                   {busy ? "Preparing booking…" : "Pay ₹50 & confirm"}
                 </Button>
               </aside>
-            </div>
+            </div>)}
           </>
         )}
       </main>

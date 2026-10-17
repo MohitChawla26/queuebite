@@ -1,6 +1,6 @@
 # QueueBite
 
-Restaurant table booking and restaurant operations on the existing Supabase project. The customer website is at `/`; the separate management website is at `/manage`. Both use the same Supabase data. There are no seeded restaurants, menu items, tables, orders, bookings, or analytics.
+Live restaurant queues, optional table reservations, and restaurant operations on the existing Supabase project. The customer website is at `/`; the separate management website is at `/manage`. Both use the same Supabase data.
 
 ## Run locally
 
@@ -20,6 +20,8 @@ Copy `.env.example` to `.env.local` and enter your Supabase project URL and publ
 The connected Supabase project has the base tables, and the SQL files in `supabase/` record the booking-platform extensions and access rules applied to it. `supabase/schema.sql` is the original base schema without demo data. Row level security is enabled for all added public tables. Availability is checked by the database against opening hours, closures, table capacity, blocks, existing bookings, booking duration, and cleaning buffer; a PostgreSQL exclusion constraint rejects overlaps when two customers book concurrently.
 
 The migrations in `supabase/migrations/` add required customer name and phone fields to new online bookings and a slot-availability RPC. The customer page shows local opening hours and AM/PM slots, while restaurant staff can see each booking's contact details and call the guest.
+
+Customers choose between **Join queue** and **Table reservation** on each restaurant page. Queue joining is free and immediate while the restaurant is open. A signed-in customer provides name, phone, and group size, then sees the number of waiting groups and people plus their live position. Restaurant staff use **Live queue** to call the next group. The database assigns the smallest available table that fits the group, checks reservation and blocked-table conflicts, and updates the customer's queue status. Staff can mark the group seated or missed, and customers can leave the queue. Positions and counts refresh automatically; old queue places do not carry into the next restaurant day.
 
 Restaurant owners or managers must add real opening hours and publish their floor map and menu before customers can book or pre-order. The public site displays honest empty states when these records are absent.
 

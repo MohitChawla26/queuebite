@@ -1,0 +1,239 @@
+/* QueueBite's charcoal and marigold palette. This file loads after the legacy UI rules. */
+:root {
+  --background: #f8f6f2;
+  --foreground: #211e1b;
+  --card: #fffdfa;
+  --card-foreground: #211e1b;
+  --popover: #fffdfa;
+  --popover-foreground: #211e1b;
+  --primary: #24211e;
+  --primary-foreground: #fffaf2;
+  --secondary: #f1ebe3;
+  --secondary-foreground: #302922;
+  --muted: #f2ede6;
+  --muted-foreground: #6c635a;
+  --accent: #fff0d9;
+  --accent-foreground: #8e480b;
+  --border: #e4ddd3;
+  --input: #dfd5ca;
+  --ring: #dc851b;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #141311;
+  --foreground: #f5f0e8;
+  --card: #211f1c;
+  --card-foreground: #f5f0e8;
+  --popover: #26231f;
+  --popover-foreground: #f5f0e8;
+  --primary: #f6a33c;
+  --primary-foreground: #21170b;
+  --secondary: #302b26;
+  --secondary-foreground: #f5f0e8;
+  --muted: #302b26;
+  --muted-foreground: #b9afa4;
+  --accent: #473018;
+  --accent-foreground: #ffbc6c;
+  --border: #423a32;
+  --input: #4a4035;
+  --ring: #ffad4c;
+}
+
+.qb-site, .qb-management, .qb-manage-auth, .qb-admin-setup {
+  --qb-bg: #f8f6f2;
+  --qb-surface: #fffdfa;
+  --qb-raised: #f3eee7;
+  --qb-border: #e5ddd2;
+  --qb-text: #211e1b;
+  --qb-muted: #71675e;
+  --qb-orange: #c2650d;
+  --qb-orange-bright: #ff981e;
+  background: var(--qb-bg);
+  color: var(--qb-text);
+}
+.dark .qb-site, .dark .qb-management, .dark .qb-manage-auth, .dark .qb-admin-setup {
+  --qb-bg: #141311;
+  --qb-surface: #211f1c;
+  --qb-raised: #2b2824;
+  --qb-border: #403a33;
+  --qb-text: #f5f0e8;
+  --qb-muted: #b9afa4;
+  --qb-orange: #ffad4c;
+  --qb-orange-bright: #ff9a21;
+}
+
+.qb-topbar, .qb-panel, .qb-restaurant-card, .qb-stat-grid > div,
+.qb-queue-stats > div, .qb-visit-action:not(.primary), .qb-table-card,
+.qb-empty-state, .qb-time-picker, .qb-time-empty {
+  background: var(--qb-surface);
+  border-color: var(--qb-border);
+  color: var(--qb-text);
+}
+.qb-topbar { box-shadow: 0 4px 22px #17120c0b; }
+.qb-hero { background: radial-gradient(circle at 90% 16%, #523319 0, transparent 38%), linear-gradient(115deg, #171615, #2b2520 70%, #47301d); box-shadow: 0 22px 45px #17110b21; }
+.qb-hero-eyebrow, .qb-hero h1 em, .qb-hero-points svg { color: #ffad42; }
+.qb-visit-action.primary { background: #24211e; border-color: #24211e; }
+.qb-visit-action.primary:hover { background: #332820; border-color: #d87918; }
+.qb-kicker, .qb-discover-head .qb-kicker, .qb-how-it-works span,
+.qb-card-title span, .qb-back { color: var(--qb-orange); }
+.qb-how-it-works strong, .qb-visit-choice h2, .qb-queue-main h2,
+.qb-queue-position, .qb-queue-table, .qb-queue-metric strong,
+.qb-stat-grid strong, .qb-manage-top h1 { color: var(--qb-text); }
+.qb-restaurant-photo { background: radial-gradient(circle at 50% 32%, #755239, #30251e 70%, #191715); color: #ffad42; }
+.qb-topbar nav a, .qb-sidebar-bottom a { color: var(--qb-muted); }
+.qb-topbar nav a.active, .qb-topbar nav a:hover,
+.qb-sidebar-bottom a:hover { color: var(--qb-orange); }
+.qb-topbar nav a:hover, .qb-sidebar-bottom a:hover { text-decoration: none; }
+.qb-role-pill, .qb-open, .qb-queue-summary-icon,
+.qb-pos-table-status, .qb-pos-order-head span, .qb-bill-status {
+  background: #fff0db;
+  color: #97500e;
+}
+.qb-queue-ticket { border-color: #ecd1ad; background: linear-gradient(145deg, #fff1dc, #fffdfa); }
+.qb-time-periods { background: var(--qb-raised); }
+.qb-time-period.active, .qb-time-option, .qb-chip, .qb-search,
+.qb-select, .qb-guest-pill { background: var(--qb-surface); border-color: var(--qb-border); color: var(--qb-text); }
+.qb-time-option.active, .qb-chip.active { background: #a95208; border-color: #a95208; color: white; }
+.qb-time-option:hover { background: #fff0db; border-color: #d87918; color: #6b350a; }
+.qb-time-period.active { color: #a95208; }
+.qb-time-period.active span { color: #99581b; }
+.qb-search:focus-within { border-color: #d87918; box-shadow: 0 0 0 4px #f4b46550; }
+.qb-bill-total { background: #25211e; }
+.qb-menu-item span, .qb-call-link, .qb-hours-line { color: var(--qb-orange); }
+.qb-portion-row button { border-color: var(--qb-border); background: var(--qb-raised); color: var(--qb-text); }
+.qb-portion-row button:hover { border-color: var(--qb-orange); color: var(--qb-orange); }
+.qb-food-placeholder { background: var(--qb-raised); color: var(--qb-orange); }
+.qb-site :focus-visible, .qb-management :focus-visible, .qb-manage-auth :focus-visible { outline-color: #ed9929; }
+
+/* Theme and signed-in profile controls */
+.qb-header-actions { display: flex; align-items: center; gap: 10px; }
+.qb-theme-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 39px; padding: 8px 11px; border: 1px solid var(--qb-border); border-radius: 10px; background: var(--qb-surface); color: var(--qb-text); font-size: .8rem; font-weight: 700; cursor: pointer; transition: border-color .2s, background .2s, transform .2s; }
+.qb-theme-toggle:hover { border-color: var(--qb-orange); background: var(--qb-raised); transform: translateY(-1px); }
+.qb-theme-toggle svg { color: var(--qb-orange); }
+.qb-profile-menu { position: relative; }
+.qb-profile-menu summary { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 4px 9px 4px 4px; border: 1px solid var(--qb-border); border-radius: 999px; background: var(--qb-surface); color: var(--qb-text); cursor: pointer; list-style: none; }
+.qb-profile-menu summary::-webkit-details-marker { display: none; }
+.qb-profile-menu summary:hover, .qb-profile-menu[open] summary { border-color: var(--qb-orange); background: var(--qb-raised); }
+.qb-profile-avatar { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #ff981e; color: #21160c; font-size: .85rem; font-weight: 850; }
+.qb-profile-trigger-name { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; font-weight: 750; }
+.qb-profile-popover { position: absolute; z-index: 50; right: 0; top: calc(100% + 10px); width: min(300px, calc(100vw - 24px)); padding: 17px; border: 1px solid var(--qb-border); border-radius: 15px; background: var(--qb-surface); color: var(--qb-text); box-shadow: 0 18px 45px #130e0d24; display: grid; gap: 5px; }
+.qb-profile-eyebrow { margin: 0 0 4px; color: var(--qb-orange); font-size: .68rem; font-weight: 850; letter-spacing: .12em; }
+.qb-profile-popover > strong { font-size: .94rem; }
+.qb-profile-email { overflow-wrap: anywhere; color: var(--qb-muted); font-size: .81rem; }
+.qb-profile-bookings-link { display: flex; justify-content: space-between; gap: 10px; margin-top: 13px; padding: 10px 11px; border: 0; border-radius: 9px; background: var(--qb-raised); color: var(--qb-text); font-size: .84rem; font-weight: 750; text-align: left; cursor: pointer; }
+.qb-profile-bookings-link:hover { color: var(--qb-orange); }
+.qb-profile-bookings-link span { color: var(--qb-orange); }
+.qb-signout { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 13px; border: 1px solid var(--qb-border); border-radius: 9px; background: var(--qb-surface); color: var(--qb-text); font-size: .83rem; font-weight: 750; cursor: pointer; transition: border-color .2s, background .2s, color .2s, transform .2s; }
+.qb-signout:hover { border-color: var(--qb-orange); background: var(--qb-raised); color: var(--qb-orange); transform: translateY(-1px); }
+.qb-profile-popover > .qb-signout { margin-top: 7px; width: 100%; }
+.qb-sidebar { background: #201c19; border-right: 1px solid #49362a; }
+.qb-sidebar .qb-logo { padding-left: 0; }
+.qb-sidebar .qb-select { background: #312a24; border-color: #55473b; color: #faf2e7; }
+.qb-sidebar-label { color: #e5a65b; }
+.qb-sidebar nav button { color: #d2c6b9; }
+.qb-sidebar nav button.active, .qb-sidebar nav button:hover { background: #62401f; color: #fff7ed; }
+.qb-sidebar-bottom { gap: 10px; padding: 15px 0 0; border-top: 1px solid #5a4939; }
+.qb-sidebar-profile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border-radius: 11px; background: #332b25; }
+.qb-sidebar-profile > div { display: grid; min-width: 0; gap: 3px; }
+.qb-sidebar-profile strong { color: #fff8ef; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qb-sidebar-profile small { color: #cabbab; font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qb-sidebar-bottom .qb-theme-toggle, .qb-sidebar-bottom .qb-signout { width: 100%; justify-content: flex-start; background: #332b25; border-color: #62503f; color: #fff4e7; }
+.qb-sidebar-bottom .qb-theme-toggle:hover, .qb-sidebar-bottom .qb-signout:hover { background: #4c3829; border-color: #ff9a21; color: #ffbc69; }
+.qb-sidebar-bottom > a { padding: 3px 9px; color: #f3d4ab; font-size: .82rem; }
+.qb-auth-header { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.qb-auth-header .qb-theme-toggle span { display: none; }
+.qb-mobile-manage-icon { display: none; }
+
+/* Dark surfaces and readable content across booking, queue, and management. */
+.dark .qb-topbar, .dark .qb-panel, .dark .qb-restaurant-card,
+.dark .qb-stat-grid > div, .dark .qb-queue-stats > div,
+.dark .qb-visit-action:not(.primary), .dark .qb-table-card,
+.dark .qb-empty-state, .dark .qb-time-picker, .dark .qb-time-empty,
+.dark .qb-queue-ticket, .dark .qb-search, .dark .qb-select,
+.dark .qb-time-option, .dark .qb-chip, .dark .qb-guest-pill,
+.dark .qb-queue-availability { background: var(--qb-surface); border-color: var(--qb-border); color: var(--qb-text); }
+.dark .qb-site :is(input, textarea, select),
+.dark .qb-management :is(input, textarea, select),
+.dark .qb-manage-auth :is(input, textarea, select),
+.dark [role="dialog"] :is(input, textarea, select) { background: var(--qb-raised); border-color: var(--qb-border); color: var(--qb-text); }
+.dark .qb-site :is(input, textarea)::placeholder,
+.dark .qb-management :is(input, textarea)::placeholder { color: #9e9388; }
+.dark .qb-panel :is(h1, h2, h3, strong, label),
+.dark .qb-restaurant-card :is(h2, strong),
+.dark .qb-queue-ticket :is(strong, span),
+.dark .qb-manage-top h1, .dark .qb-visit-choice h2,
+.dark .qb-how-it-works strong, .dark .qb-queue-main h2,
+.dark .qb-queue-position, .dark .qb-queue-table,
+.dark .qb-stat-grid strong, .dark .qb-queue-stats strong { color: var(--qb-text); }
+.dark .qb-queue-ticket-top, .dark .qb-card-title span,
+.dark .qb-queue-summary-icon, .dark .qb-role-pill,
+.dark .qb-queue-live, .dark .qb-back { color: var(--qb-orange); }
+.dark .qb-role-pill, .dark .qb-open, .dark .qb-queue-summary-icon,
+.dark .qb-pos-table-status, .dark .qb-pos-order-head span,
+.dark .qb-bill-status { background: #473018; color: #ffbd70; }
+.dark .qb-time-periods, .dark .qb-profile-bookings-link { background: var(--qb-raised); }
+.dark .qb-time-period.active { background: #443120; color: #ffbc6c; }
+.dark .qb-time-period.active span { color: #ffd19a; }
+.dark .qb-time-option.active, .dark .qb-chip.active { background: #b86110; border-color: #dd8525; color: white; }
+.dark .qb-time-option:hover { background: #46301d; color: #ffbc6c; }
+.dark .qb-bill-total { background: #382919; color: #fff4e8; }
+.dark .qb-list-row, .dark .qb-reservation-row, .dark .qb-contact-fields,
+.dark .qb-pos-menu > div, .dark .qb-bill-item, .dark .qb-bill-adjustments,
+.dark .qb-how-it-works, .dark .qb-skeleton-list-row { border-color: var(--qb-border); }
+.dark .qb-skeleton { background: linear-gradient(100deg, #332d27 20%, #494037 40%, #332d27 60%); background-size: 200% 100%; }
+.dark .qb-sidebar .qb-skeleton { background: linear-gradient(100deg, #3a3027 20%, #544332 40%, #3a3027 60%); background-size: 200% 100%; }
+.dark .qb-map, .dark .qb-editor-map {
+  background-color: #24221f;
+  background-image: linear-gradient(#37332e 1px, transparent 1px), linear-gradient(90deg, #37332e 1px, transparent 1px);
+  border-color: var(--qb-border);
+}
+.dark .qb-map-table, .dark .qb-table-card { color: var(--qb-text); }
+.dark .qb-map-table { background: #39342f; border-color: #60564c; }
+.dark .qb-map-table.available { background: #18392c; border-color: #348a5f; color: #a7eac1; }
+.dark .qb-map-table.unsuitable { background: #44321c; border-color: #947039; color: #ffcc83; }
+.dark .qb-map-table.selected { background: #a95208; border-color: #ee983d; color: white; box-shadow: 0 0 0 4px #5e3b1e; }
+.dark .qb-map-element { background: #44403a; border-color: #6b6259; color: #eee4d7; }
+.dark .qb-receipt-row, .dark .qb-cart-line, .dark .qb-menu-item { border-color: var(--qb-border); }
+.dark .qb-portion-row button { background: var(--qb-raised); border-color: var(--qb-border); color: var(--qb-text); }
+.dark .qb-food-placeholder { background: var(--qb-raised); color: var(--qb-orange); }
+.dark .qb-bill-item-name strong, .dark .qb-bill-item-side strong,
+.dark .qb-reservation-main strong, .dark .qb-charge-field,
+.dark .qb-pos-menu strong { color: var(--qb-text); }
+.dark .qb-help, .dark .qb-restaurant-heading p:last-child,
+.dark .qb-discover-head p:last-child, .dark .qb-card-body p,
+.dark .qb-list-row span, .dark .qb-time-note,
+.dark .qb-queue-intro, .dark .qb-queue-ticket p,
+.dark .qb-visit-choice > p, .dark .qb-visit-action span,
+.dark .qb-fields label, .dark .qb-form label,
+.dark .qb-queue-form label { color: var(--qb-muted); }
+.dark .qb-visit-action.primary span { color: #e2d2c0; }
+.dark .qb-manage-auth .qb-auth-card > p:not(.qb-kicker):not(.qb-error):not(.qb-notice),
+.dark .qb-auth-divider,
+.dark .qb-admin-heading p,
+.dark .qb-auth-card .qb-help { color: var(--qb-muted); }
+.dark .qb-auth-divider::before, .dark .qb-auth-divider::after { background: var(--qb-border); }
+.qb-admin-setup > header { background: var(--qb-surface); border-color: var(--qb-border); }
+.qb-admin-setup > main > p:not(.qb-kicker) { color: var(--qb-muted); }
+.dark .qb-manage-auth { background: radial-gradient(circle at 15% 85%, #302115 0, transparent 34%), #141311; }
+.dark .qb-admin-setup > main > h1 { color: var(--qb-text); }
+
+@media (max-width: 980px) { .qb-theme-toggle span { display: none; } }
+@media (max-width: 760px) {
+  .qb-header-actions { gap: 6px; }
+  .qb-profile-trigger-name { display: none; }
+  .qb-profile-menu summary { gap: 4px; }
+  .qb-guest-pill { display: none; }
+  .qb-sidebar-bottom .qb-theme-toggle span { display: inline; }
+  .qb-sidebar-bottom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 6px; padding-top: 12px; }
+  .qb-sidebar-profile, .qb-sidebar-bottom > a { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .qb-topbar { gap: 8px; padding-inline: 12px; }
+  .qb-topbar nav { gap: 0; margin-left: auto; }
+  .qb-topbar nav a:last-child { width: 39px; height: 39px; justify-content: center; border: 1px solid var(--qb-border); border-radius: 10px; }
+  .qb-topbar nav a:last-child span, .qb-topbar nav a:last-child svg:last-child { display: none; }
+  .qb-topbar nav .qb-mobile-manage-icon { display: block; }
+  .qb-topbar .qb-brand-logo { width: 130px; height: 44px; }
+  .qb-theme-toggle { width: 39px; padding-inline: 0; }
+}
